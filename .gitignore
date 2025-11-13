@@ -62,6 +62,10 @@ cmake-build-*/
 ##########
 .vscode
 
+# Container links
+.devcontainer/
+/Containerfile
+
 # File-based project format:
 *.iws
 
