@@ -1,0 +1,103 @@
+
+FROM spack/ubuntu-jammy:1.0 AS spack_base
+
+ARG spack_yaml
+
+# Use a read-only public binary package cache.
+# Pin local spack packages to a version that plays well with that cache.
+#RUN spack repo update builtin --tag v2025.07.0 && \
+#    spack mirror add rolling https://binaries.spack.io/develop && \
+#    spack buildcache keys --install --trust
+
+# Use an OCI repository as a read/write package cache.
+RUN --mount=type=secret,id=credentials,dst=/tmp/credentials.sh <<EOF
+    . /tmp/credentials.sh
+    spack mirror add local $cache_uri \
+    --autopush --unsigned \
+    --oci-username-variable cache_user \
+    --oci-password-variable cache_password
+EOF
+
+RUN mkdir -p /opt/spack-env
+COPY ${spack_yaml} /opt/spack-env
+WORKDIR /opt/spack-env
+
+# Install the packages
+# then remove unnecessary intermediate dependencies to save space
+RUN --mount=type=secret,id=credentials,dst=/tmp/credentials.sh <<EOF
+    . /tmp/credentials.sh
+    cd /opt/spack-env
+    spack env activate .
+    spack install --fail-fast
+    spack gc -y
+EOF
+
+# Leave a script for future stages to use for activating this environment
+RUN cd /opt/spack-env && \
+    spack env activate --sh -d . > activate.sh
+
+
+FROM mcr.microsoft.com/devcontainers/base:2.0-jammy AS dev
+
+# The installed environment configuration
+COPY --from=spack_base /opt/spack-env /opt/spack-env
+# The Spack installation
+COPY --from=spack_base /opt/spack /opt/spack
+# The WarpX dependencies view
+COPY --from=spack_base /opt/views /opt/views
+
+RUN echo "\n. /opt/spack-env/activate.sh" >> /home/vscode/.bashrc && \
+    echo "\n. /opt/spack-env/activate.sh" >> /home/vscode/.zshrc
+
+RUN <<-EOF
+cat > /entrypoint.sh <<-EOS
+#!/bin/sh
+. /opt/spack-env/activate.sh
+exec \$@
+EOS
+chmod a+x /entrypoint.sh
+EOF
+RUN cat /entrypoint.sh
+#COPY --chmod=0755 entrypoint.sh /
+ENTRYPOINT [ "/entrypoint.sh" ]
+CMD [ "/bin/bash" ]
+
+
+FROM spack_base AS build
+
+RUN mkdir -p /opt/warpx_build /opt/warpx
+WORKDIR /opt/warpx_build
+
+# Strip all the binaries to save some space but lose debug info
+RUN find -L /opt/views/*/* -type f -exec readlink -f '{}' \; | \
+    xargs file -i | \
+    grep 'charset=binary' | \
+    grep 'x-executable\|x-archive\|x-sharedlib' | \
+    awk -F: '{print $1}' | xargs strip
+
+# This assumes the build is running from the root directory
+# of the WarpX source.
+ENV CMAKE_INSTALL_PREFIX=/opt/warpx
+ARG warpx_build_opts=""
+RUN --mount=type=bind,source=.,target=/opt/warpx_build <<EOF
+    set -eu
+    . /opt/spack-env/activate.sh
+    #ls -l /opt/warpx_build
+    #id
+    cmake -S . -B /tmp/build ${warpx_build_opts}
+    cmake --build /tmp/build --target install -j $(nproc)
+    ln -s /opt/warpx/bin/warpx* /opt/warpx/bin/warpx
+EOF
+
+FROM ubuntu:jammy AS run
+
+# Keep the installed runtime tools
+COPY --from=build /opt/spack-env /opt/spack-env
+COPY --from=build /opt/spack /opt/spack
+COPY --from=build /opt/views /opt/views
+
+# WarpX itself
+COPY --from=build /opt/warpx /opt/warpx
+
+ENTRYPOINT [ "/opt/warpx/bin/warpx" ]
+CMD [ "-h" ]

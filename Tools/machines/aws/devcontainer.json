@@ -1,0 +1,12 @@
+{
+    "build": {
+        "dockerfile": "../Containerfile",
+        "context": "..",
+        "target": "dev",
+        "options": [
+            "--secret=id=credentials,src=.devcontainer/credentials.sh"
+        ],
+        "remoteUser": "vscode",
+        "containerUser": "vscode"
+    }
+}
