@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eu
+set -eux
 
 cd $(dirname $0)
 
@@ -16,13 +16,13 @@ ln -sf "../$configuration_subpath/devcontainer.json" .
 ln -sf "../$configuration_subpath/credentials.sh" .
 popd
 
-spack_yaml="$configuration_subpath/spack-nogpu.yaml"
+export spack_yaml="$configuration_subpath/spack-cuda.yaml"
 
 docker buildx build \
     --secret id=credentials,src=.devcontainer/credentials.sh \
     --build-arg spack_yaml \
     --tag warpx:dev \
     -f Containerfile \
-    --target=build \
+    --target=spack_base \
     --progress=plain \
     .

@@ -1,5 +1,5 @@
 
-FROM spack/ubuntu-jammy:1.0 AS spack_base
+FROM spack/ubuntu-jammy:1.1 AS spack_base
 
 ARG spack_yaml
 
@@ -19,23 +19,29 @@ RUN --mount=type=secret,id=credentials,dst=/tmp/credentials.sh <<EOF
 EOF
 
 RUN mkdir -p /opt/spack-env
-COPY ${spack_yaml} /opt/spack-env
+COPY ${spack_yaml} /opt/spack-env/spack.yaml
 WORKDIR /opt/spack-env
 
 # Install the packages
 # then remove unnecessary intermediate dependencies to save space
 RUN --mount=type=secret,id=credentials,dst=/tmp/credentials.sh <<EOF
-    . /tmp/credentials.sh
-    cd /opt/spack-env
-    spack env activate .
-    spack install --fail-fast
-    spack gc -y
+set -eu
+. /tmp/credentials.sh
+cd /opt/spack-env
+spack env activate .
+spack install --fail-fast
+#spack gc -y
+spack env activate --sh -d . > activate.sh
+cat > /opt/spack-env/entrypoint.sh <<-EOS
+#!/bin/sh
+. /opt/spack-env/activate.sh
+exec \$@
+EOS
+chmod a+x /opt/spack-env/entrypoint.sh
 EOF
 
-# Leave a script for future stages to use for activating this environment
-RUN cd /opt/spack-env && \
-    spack env activate --sh -d . > activate.sh
-
+ENTRYPOINT [ "/opt/spack-env/entrypoint.sh" ]
+CMD [ "/bin/bash" ]
 
 FROM mcr.microsoft.com/devcontainers/base:2.0-jammy AS dev
 
@@ -49,17 +55,7 @@ COPY --from=spack_base /opt/views /opt/views
 RUN echo "\n. /opt/spack-env/activate.sh" >> /home/vscode/.bashrc && \
     echo "\n. /opt/spack-env/activate.sh" >> /home/vscode/.zshrc
 
-RUN <<-EOF
-cat > /entrypoint.sh <<-EOS
-#!/bin/sh
-. /opt/spack-env/activate.sh
-exec \$@
-EOS
-chmod a+x /entrypoint.sh
-EOF
-RUN cat /entrypoint.sh
-#COPY --chmod=0755 entrypoint.sh /
-ENTRYPOINT [ "/entrypoint.sh" ]
+ENTRYPOINT [ "/opt/spack-env/entrypoint.sh" ]
 CMD [ "/bin/bash" ]
 
 
@@ -89,7 +85,8 @@ RUN --mount=type=bind,source=.,target=/opt/warpx_build <<EOF
     ln -s /opt/warpx/bin/warpx* /opt/warpx/bin/warpx
 EOF
 
-FROM ubuntu:jammy AS run
+#FROM ubuntu:jammy AS run
+FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu22.04 AS run
 
 # Keep the installed runtime tools
 COPY --from=build /opt/spack-env /opt/spack-env
