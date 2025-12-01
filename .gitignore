@@ -62,6 +62,11 @@ cmake-build-*/
 ##########
 .vscode
 
+#################
+# Warp terminal #
+#################
+WARP.md
+
 # Container links
 .devcontainer/
 /Containerfile
