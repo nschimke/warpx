@@ -404,6 +404,7 @@ computePhi (
         mlmg.setVerbose(verbosity);
         mlmg.setMaxIter(max_iters);
         mlmg.setConvergenceNormType(amrex::MLMGNormType::greater);
+        mlmg.setNoGpuSync(true);
 
         const int ng = int(grid_type == utils::enums::GridType::Collocated); // ghost cells
         if (ng) {
@@ -411,6 +412,8 @@ computePhi (
             // ask MLMG to fill BC for us after it solves the problem.
             mlmg.setFinalFillBC(true);
         }
+
+        rho[lev]->OverrideSync(geom[lev].periodicity());
 
         // Solve Poisson equation at lev
         mlmg.solve( {phi[lev]}, {rho[lev]},

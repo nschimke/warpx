@@ -44,10 +44,14 @@ class CopyPreBuild(build):
                 "PYWARPX_LIB_DIR='{}'".format(PYWARPX_LIB_DIR)
             )
 
-        # copy external libs into collection of files in a temporary build dir
+        # copy Python module artifacts and sources
         dst_path = os.path.join(self.build_lib, "pywarpx")
-        for lib_path in libs_found:
-            shutil.copy(lib_path, dst_path)
+        shutil.copytree(
+            PYWARPX_LIB_DIR,
+            dst_path,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("diags", "diags.*"),
+        )
 
 
 class CMakeExtension(Extension):
@@ -102,6 +106,7 @@ class CMakeBuild(build_ext):
             "-DWarpX_COMPUTE=" + WARPX_COMPUTE,
             "-DWarpX_MPI:BOOL=" + WARPX_MPI,
             "-DWarpX_EB:BOOL=" + WARPX_EB,
+            "-DWarpX_PETSC:BOOL=" + WARPX_PETSC,
             "-DWarpX_OPENPMD:BOOL=" + WARPX_OPENPMD,
             "-DWarpX_PRECISION=" + WARPX_PRECISION,
             "-DWarpX_PARTICLE_PRECISION=" + WARPX_PARTICLE_PRECISION,
@@ -204,6 +209,7 @@ env = os.environ.copy()
 WARPX_COMPUTE = env.pop("WARPX_COMPUTE", "OMP")
 WARPX_MPI = env.pop("WARPX_MPI", "OFF")
 WARPX_EB = env.pop("WARPX_EB", "ON")
+WARPX_PETSC = env.pop("WARPX_PETSC", "OFF")
 WARPX_OPENPMD = env.pop("WARPX_OPENPMD", "ON")
 WARPX_PRECISION = env.pop("WARPX_PRECISION", "DOUBLE")
 WARPX_PARTICLE_PRECISION = env.pop("WARPX_PARTICLE_PRECISION", WARPX_PRECISION)
@@ -253,6 +259,12 @@ if WARPX_EB.upper() in ["1", "ON", "TRUE", "YES"]:
     WARPX_EB = "ON"
 else:
     WARPX_EB = "OFF"
+
+# PETSc linear/nonlinear solvers via AMReX
+if WARPX_PETSC.upper() in ["1", "ON", "TRUE", "YES"]:
+    WARPX_PETSC = "ON"
+else:
+    WARPX_PETSC = "OFF"
 
 
 # for CMake
@@ -325,7 +337,7 @@ setup(
     # },
     extras_require={
         "all": [
-            "openPMD-api>=0.16.1",
+            "openPMD-api>=0.17.0",
             "openPMD-viewer~=1.1",
             "yt>=4.1.0",
             "matplotlib",

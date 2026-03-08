@@ -73,8 +73,6 @@ class PoissonSolverPseudo1D(picmi.ElectrostaticSolver):
             required_precision=1,
             **kwargs,
         )
-        self.rho_wrapper = None
-        self.phi_wrapper = None
         self.time_sum = 0.0
 
     def solver_initialize_inputs(self):
@@ -160,15 +158,13 @@ class PoissonSolverPseudo1D(picmi.ElectrostaticSolver):
         Poisson's equation."""
 
         # get rho from WarpX
-        if self.rho_wrapper is None:
-            self.rho_wrapper = sim.fields.get("rho_fp", level=0)
-        self.rho_data = self.rho_wrapper[(), ()]
+        rho_wrapper = sim.fields.get("rho_fp", level=0)
+        self.rho_data = rho_wrapper[(), ()]
 
         self.solve()
 
-        if self.phi_wrapper is None:
-            self.phi_wrapper = sim.fields.get("phi_fp", level=0)
-        self.phi_wrapper[(), ()] = self.phi
+        phi_wrapper = sim.fields.get("phi_fp", level=0)
+        phi_wrapper[(), ()] = self.phi[...]
 
     def solve(self):
         """The solution step. Includes getting the boundary potentials and
@@ -328,7 +324,6 @@ sim = picmi.Simulation(
     time_step_size=DT,
     max_steps=max_steps,
     warpx_collisions=[mcc_electrons, mcc_ions],
-    warpx_collisions_split_position_push=0,
 )
 
 sim.add_species(
